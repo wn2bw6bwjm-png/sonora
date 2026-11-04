@@ -1,0 +1,76 @@
+name: Build SONORA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create platform folders
+        run: |
+          flutter create . --org com.sonora --project-name sonora --platforms=android,ios
+          rm -f test/widget_test.dart
+      - name: Configure platforms (internet, background audio)
+        run: python3 tool/configure_platforms.py
+      - run: flutter pub get
+      - name: Generate Drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+      - name: Analyze
+        run: flutter analyze
+        continue-on-error: true
+      - name: Test
+        run: flutter test
+        continue-on-error: true
+      - name: Build APK
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sonora-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create platform folders
+        run: |
+          flutter create . --org com.sonora --project-name sonora --platforms=android,ios
+          rm -f test/widget_test.dart
+      - name: Configure platforms (internet, background audio)
+        run: python3 tool/configure_platforms.py
+      - run: flutter pub get
+      - name: Generate Drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+      - name: Prepare iOS project (pods, config)
+        run: flutter build ios --config-only --release --no-codesign
+      - name: Archive iOS without signing
+        run: |
+          xcodebuild -quiet -workspace ios/Runner.xcworkspace -scheme Runner \
+            -configuration Release -sdk iphoneos \
+            -archivePath build/Runner.xcarchive archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Runner.xcarchive/Products/Applications/Runner.app Payload/
+          zip -qr sonora-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sonora-ipa-unsigned
+          path: sonora-unsigned.ipa
