@@ -1,0 +1,56 @@
+name: Build APK and IPA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build Android APK (Unsigned)
+    runs-on: windows-latest
+    outputs:
+      apk-path: ${{ steps.upload-apk.outputs.file-path }}
+    steps:
+      - name: Install Flutter SDK
+        uses: subvisual/flutter-actions@master
+        with:
+          flutter-version: "3.22.0"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Get Flutter packages
+        run: flutter pub get
+      - name: Build APK (release, unsigned)
+        run: flutter build apk --release
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonora-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  build-ipa:
+    name: Build iOS IPA (Unsigned)
+    runs-on: macos-latest
+    outputs:
+      ipa-path: ${{ steps.upload-ipa.outputs.file-path }}
+    steps:
+      - name: Install Flutter SDK
+        uses: subvisual/flutter-actions@master
+        with:
+          flutter-version: "3.22.0"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Xcode
+        uses: subvisual/setup-xcode-action@v2
+        with:
+          xcode-version: "15.0"
+      - name: Build IPA (release, unsigned)
+        run: |
+          flutter build ios --release --no-codesign
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonora-ipa
+          path: build/ios/ipa/Runner.ipa
