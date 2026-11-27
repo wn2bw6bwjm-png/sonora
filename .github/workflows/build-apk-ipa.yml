@@ -14,12 +14,13 @@ jobs:
     outputs:
       apk-path: ${{ steps.upload-apk.outputs.file-path }}
     steps:
-      - name: Install Flutter SDK
-        uses: subvisual/flutter-actions@master
-        with:
-          flutter-version: "3.22.0"
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.0"
+          channel: stable
       - name: Get Flutter packages
         run: flutter pub get
       - name: Build APK (release, unsigned)
@@ -36,14 +37,15 @@ jobs:
     outputs:
       ipa-path: ${{ steps.upload-ipa.outputs.file-path }}
     steps:
-      - name: Install Flutter SDK
-        uses: subvisual/flutter-actions@master
-        with:
-          flutter-version: "3.22.0"
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.0"
+          channel: stable
       - name: Setup Xcode
-        uses: subvisual/setup-xcode-action@v2
+        uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "15.0"
       - name: Build IPA (release, unsigned)
