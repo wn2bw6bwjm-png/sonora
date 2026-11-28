@@ -15,36 +15,21 @@ class AudioFileModel {
     this.coverArtPath,
   });
 
-  factory AudioFileModel.fromPath(String filePath) async {
-    // Use audio_metadata or just basic file info
-    // For now, create with basic info
-    final file = File(filePath);
-    final bytes = await file.length();
-
-    // Try to extract metadata using a simple approach
+  factory AudioFileModel.fromPath(String filePath) {
     final title = _extractTitleFromPath(filePath);
-    final artist = 'Unknown Artist';
-
-    // Duration estimation based on file size (rough)
-    final estimatedDuration = Duration(
-      milliseconds: (bytes / 1024 / 1024 * 5 * 60 * 1000).round(),
-    );
-
-    final id = '${filePath.hashCode}';
 
     return AudioFileModel(
-      id: id,
+      id: filePath.hashCode.toString(),
       filePath: filePath,
       title: title,
-      artist: artist,
-      duration: estimatedDuration,
+      artist: 'Unknown Artist',
+      duration: Duration.zero,
     );
   }
 
   static String _extractTitleFromPath(String path) {
     final basename = path.split('/').last.replaceAll('.', ' ');
-    // Remove numbers at the beginning
-    final cleaned = basename.split(' ').where((w) => RegExp(r'[a-zA-Z]').hasNext(w)).join(' ');
+    final cleaned = basename.split(' ').where((w) => RegExp(r'[a-zA-Z]').hasMatch(w)).join(' ');
     return cleaned.isEmpty ? 'Audio File' : cleaned.trim();
   }
 

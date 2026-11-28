@@ -1,6 +1,11 @@
+import 'package:equatable/equatable.dart';
+import 'package:sonora/domain/entities/track.dart';
+
 abstract class PlayerEvent extends Equatable {
+  const PlayerEvent();
+
   @override
-  List<Object> get props => [];
+  List<Object?> get props => [];
 }
 
 class PlayerPlayPauseEvent extends PlayerEvent {}
@@ -12,49 +17,39 @@ class PlayerPreviousTrackEvent extends PlayerEvent {}
 class PlayerSeekEvent extends PlayerEvent {
   final Duration position;
 
-  PlayerSeekEvent(this.position);
+  const PlayerSeekEvent(this.position);
 
   @override
-  List<Object> get props => [position];
+  List<Object?> get props => [position];
 }
 
 class PlayerVolumeEvent extends PlayerEvent {
   final double volume;
 
-  PlayerVolumeEvent(this.volume);
+  const PlayerVolumeEvent(this.volume);
 
   @override
-  List<Object> get props => [volume];
+  List<Object?> get props => [volume];
 }
 
 class PlayerSetTrackEvent extends PlayerEvent {
   final Track track;
 
-  PlayerSetTrackEvent(this.track);
+  const PlayerSetTrackEvent(this.track);
 
   @override
-  List<Object> get props => [track];
+  List<Object?> get props => [track];
 }
 
 class PlayerQueueUpdateEvent extends PlayerEvent {
   final List<Track> queue;
-  final int? removedIndex;
-  final bool? added;
-  final Track? addedTrack;
 
-  PlayerQueueUpdateEvent(this.queue, {this.removedIndex, this.added, this.addedTrack});
+  const PlayerQueueUpdateEvent(this.queue);
 
   @override
-  List<Object> get props => [queue, removedIndex, added, addedTrack];
-}
-
-class PlayerRepeatModeChangedEvent extends PlayerEvent {
-  final RepeatMode mode;
-
-  PlayerRepeatModeChangedEvent(this.mode);
-
-  @override
-  List<Object> get props => [mode];
+  List<Object?> get props => [queue];
 }
 
 class PlayerShuffleToggleEvent extends PlayerEvent {}
+
+class PlayerRepeatToggleEvent extends PlayerEvent {}

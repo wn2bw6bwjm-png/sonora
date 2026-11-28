@@ -1,35 +1,85 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:sonora/presentation/blocs/player/player_bloc.dart';
-import 'package:sonora/presentation/blocs/player/player_event.dart';
-import 'package:sonora/presentation/blocs/player/player_state.dart';
+import 'package:sonora/core/themes/app_theme.dart';
+import 'package:sonora/domain/entities/track.dart';
 
 class MiniPlayer extends StatelessWidget {
-  const MiniPlayer({super.key});
+  final Track? track;
+
+  const MiniPlayer({super.key, this.track});
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    if (track == null) return const SizedBox.shrink();
 
     return Container(
-      color: Color(0xFF1E1E1E),
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: AppTheme.cardColor,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Icon(Icons.music_note, size: 20, color: Colors.grey),
-          const SizedBox(width: 8),
-          Text(
-            'SONORA',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+          _buildCover(),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  track!.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  track!.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 11),
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
-          Icon(Icons.skip_previous, size: 20, color: Colors.white70),
+          const Icon(Icons.skip_previous, size: 22, color: AppTheme.textPrimary),
           IconButton(
-            icon: Icon(Icons.play_arrow, size: 24, color: Colors.white),
+            icon: const Icon(Icons.play_arrow, size: 26),
+            color: AppTheme.textPrimary,
             onPressed: () {},
           ),
-          Icon(Icons.skip_next, size: 20, color: Colors.white70),
+          const Icon(Icons.skip_next, size: 22, color: AppTheme.textPrimary),
         ],
       ),
     );
   }
+
+  Widget _buildCover() {
+    if (track!.coverUrl != null && track!.coverUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.network(
+          track!.coverUrl!,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _placeholder(),
+        ),
+      );
+    }
+    return _placeholder();
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Icon(Icons.music_note,
+          color: AppTheme.textSecondary, size: 20),
+    );
+  }
+}

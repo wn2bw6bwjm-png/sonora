@@ -1,18 +1,15 @@
-class JamendoDataSource implements RemoteDataSource {
-  @override
-  Future<List<TrackModel>> getTrendingTracks() async {
+class JamendoDataSource {
+  Future<List<Map<String, dynamic>>> getTrendingTracks() async {
     await Future.delayed(const Duration(milliseconds: 200));
     return [];
   }
 
-  @override
-  Future<List<TrackModel>> searchTracks(String query) async {
+  Future<List<Map<String, dynamic>>> searchTracks(String query) async {
     await Future.delayed(const Duration(milliseconds: 200));
     return [];
   }
 
-  @override
-  Future<TrackModel?> getTrackById(String trackId) async {
+  Future<Map<String, dynamic>?> getTrackById(String trackId) async {
     await Future.delayed(const Duration(milliseconds: 200));
     return null;
   }

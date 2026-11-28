@@ -1,11 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:sonora/core/themes/app_theme.dart';
-import 'package:sonora/presentation/blocs/player/player_bloc.dart';
-import 'package:sonora/presentation/blocs/player/player_event.dart';
-import 'package:sonora/presentation/blocs/player/player_state.dart';
-import 'package:sonora/presentation/widgets/mini_player.dart';
-import 'package:sonora/domain/entities/track.dart';
 
 class FilePickerWidget extends StatelessWidget {
   const FilePickerWidget({super.key});
@@ -22,7 +16,7 @@ class FilePickerWidget extends StatelessWidget {
       maxChildSize: 0.9,
       builder: (context, scrollController) => Container(
         decoration: BoxDecoration(
-          color: isDark ? AppTheme.cardColor : Colors.white,
+          color: AppTheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           boxShadow: [
             BoxShadow(
@@ -40,7 +34,7 @@ class FilePickerWidget extends StatelessWidget {
               width: 40,
               height: 6,
               decoration: BoxDecoration(
-                color: isDark ? AppTheme.textSecondary : AppTheme.textPrimary,
+                color: AppTheme.onSurfaceVariant,
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -51,10 +45,10 @@ class FilePickerWidget extends StatelessWidget {
               child: Text(
                 'Выбор аудиофайла',
                 style: theme.textTheme.titleLarge?.copyWith(
-                  color: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
+                  color: AppTheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
-            ),
+              ),
             ),
 
             // Pick file button
@@ -67,15 +61,15 @@ class FilePickerWidget extends StatelessWidget {
                 icon: const Icon(Icons.upload_file),
                 label: const Text('Выбрать файл'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentColor,
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: AppTheme.onPrimary,
                 ),
               ),
             ),
 
             // File list area
             Expanded(
-              child: _buildFileList(context, isDark),
+              child: _buildFileList(theme, isDark),
             ),
           ],
         ),
@@ -83,7 +77,7 @@ class FilePickerWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildFileList(BuildContext context, bool isDark) {
+  Widget _buildFileList(ThemeData theme, bool isDark) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -91,20 +85,20 @@ class FilePickerWidget extends StatelessWidget {
           Icon(
             Icons.music_note,
             size: 64,
-            color: isDark ? AppTheme.textSecondary : AppTheme.textPrimary,
+            color: AppTheme.onSurfaceVariant,
           ),
           const SizedBox(height: 16),
           Text(
             'Выберите аудиофайл для прослушивания',
             style: theme.textTheme.bodyLarge?.copyWith(
-              color: isDark ? AppTheme.textSecondary : AppTheme.textPrimary,
+              color: AppTheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Форматы: MP3, WAV, FLAC, M4A и др.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? AppTheme.textSecondary : AppTheme.textPrimary,
+              color: AppTheme.onSurfaceVariant,
             ),
           ),
         ],

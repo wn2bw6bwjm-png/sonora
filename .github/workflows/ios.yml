@@ -1,0 +1,121 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [main, master, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    name: Build IPA
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: 'stable'
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Run tests
+        run: flutter test
+      - name: Setup Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+          xcodebuild -version
+      - name: Build iOS (debug)
+        run: |
+          flutter build ios --debug --no-codesign
+      - name: Build iOS (release, no codesign)
+        run: |
+          flutter build ios --release --no-codesign
+      - name: Create IPA (unsigned)
+        run: |
+          # Create Payload directory
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          # Create unsigned IPA
+          zip -r SONORA-unsigned.ipa Payload/
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SONORA-iOS-IPA-Unsigned
+          path: SONORA-unsigned.ipa
+          retention-days: 30
+
+  build-signed:
+    name: Build Signed IPA
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: 'stable'
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Import Certificates
+        env:
+          CERTIFICATE_P12: ${{ secrets.IOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          # Create keychain
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+
+          # Import certificate
+          echo "$CERTIFICATE_P12" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+
+          # Import provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+
+          # Set keychain settings
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+      - name: Configure Xcode Project
+        run: |
+          # Update project settings for signing
+          cd ios
+          # This would be configured via Xcode project settings or xcconfig
+          # For CI, we use automatic signing with the imported certificate
+      - name: Build Signed IPA
+        run: |
+          flutter build ios --release \
+            --build-name=${{ github.ref_name }} \
+            --build-number=${{ github.run_number }}
+          # Create IPA using xcodebuild
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath ../build/Runner.xcarchive \
+            -sdk iphoneos \
+            -allowProvisioningUpdates \
+            archive
+          xcodebuild -exportArchive \
+            -archivePath ../build/Runner.xcarchive \
+            -exportPath ../build/ios/ipa \
+            -exportOptionsPlist ExportOptions.plist
+      - name: Upload Signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SONORA-iOS-IPA-Signed
+          path: build/ios/ipa/*.ipa
+          retention-days: 90
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/ios/ipa/*.ipa
+          generate_release_notes: true

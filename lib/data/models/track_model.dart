@@ -1,3 +1,5 @@
+import 'package:sonora/domain/entities/track.dart';
+
 class TrackModel {
   final String id;
   final String sourceId;
@@ -54,4 +56,32 @@ class TrackModel {
         'availability_type': availabilityType,
         'license_info': licenseInfo,
       };
+
+  Track toEntity() => Track(
+        id: id,
+        sourceId: sourceId,
+        title: title,
+        artist: artist,
+        album: album,
+        coverUrl: coverUrl,
+        duration: duration,
+        streamUrl: streamUrl,
+        sourceName: sourceName,
+        availabilityType: availabilityType,
+        licenseInfo: licenseInfo,
+      );
+
+  factory TrackModel.fromEntity(Track track) => TrackModel(
+        id: track.id,
+        sourceId: track.sourceId,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        coverUrl: track.coverUrl,
+        duration: track.duration,
+        streamUrl: track.streamUrl,
+        sourceName: track.sourceName,
+        availabilityType: track.availabilityType,
+        licenseInfo: track.licenseInfo,
+      );
 }

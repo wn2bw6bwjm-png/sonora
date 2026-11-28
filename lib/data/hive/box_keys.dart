@@ -5,4 +5,5 @@ class BoxKeys {
   static const searchHistory = 'search_history';
   static const playerState = 'player_state';
   static const cacheSettings = 'cache_settings';
+  static const localTracks = 'local_tracks';
 }

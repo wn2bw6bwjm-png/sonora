@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:sonora/core/themes/app_theme.dart';
-import 'package:sonora/presentation/blocs/home/home_bloc.dart';
-import 'package:sonora/presentation/blocs/home/home_event.dart';
-import 'package:sonora/presentation/blocs/home/home_state.dart';
-import 'package:sonora/presentation/blocs/player/player_bloc.dart';
-import 'package:sonora/presentation/blocs/player/player_event.dart';
-import 'package:sonora/presentation/blocs/player/player_state.dart';
-import 'package:sonora/presentation/widgets/mini_player.dart';
-import 'package:sonora/presentation/widgets/file_picker_widget.dart';
 import 'package:sonora/domain/entities/track.dart';
+import 'package:sonora/data/repositories/track_repository_impl.dart';
+import 'package:sonora/services/recommendation_engine.dart';
+import 'package:sonora/presentation/widgets/mini_player.dart';
+import 'package:sonora/presentation/widgets/track_tile.dart';
+import 'package:sonora/presentation/widgets/skeleton_loader.dart';
+import 'package:sonora/routing/page_transitions.dart';
+import 'package:sonora/presentation/screens/settings/settings_screen.dart';
+import 'package:sonora/presentation/screens/player/player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,338 +17,509 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late final HomeBloc _homeBloc;
-  late final PlayerBloc _playerBloc;
-  late TabController _tabController;
-  int _selectedBottomNavIndex = 0;
+class _HomeScreenState extends State<HomeScreen> {
+  final TrackRepository _repository = TrackRepositoryImpl();
+  final RecommendationEngine _recommendationEngine = RecommendationEngine();
+  late Future<List<Track>> _trendingFuture;
+  late Future<List<Track>> _recommendationsFuture;
+  Track? _currentTrack;
+  int _selectedNavIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _homeBloc = context.read<HomeBloc>();
-    _playerBloc = context.read<PlayerBloc>();
-    _tabController = TabController(length: 4, vsync: this); // 4 tabs now
-    _homeBloc.add(const HomeInitialEvent());
-    // Listen to player state changes for mini-player
-    _playerBloc.listen((state) {
-      // Rebuild mini player on state change
-      setState(() {});
+    _trendingFuture = _repository.getTrendingTracks();
+    _recommendationsFuture = _recommendationEngine.getRecommendations(limit: 10);
+  }
+
+  void _reload() {
+    setState(() {
+      _trendingFuture = _repository.getTrendingTracks();
+      _recommendationsFuture = _recommendationEngine.getRecommendations(limit: 10);
     });
   }
 
   @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
-      appBar: _buildAppBar(theme, isDark),
-      body: _buildBody(context, theme, isDark),
-      bottomNavigationBar: _buildBottomNav(theme, isDark),
-      // Add mini player at the very bottom, above system navigation
-      bottom: PreferredSize(
-        preferredSize: Size.fromHeight(kToolbarHeight + 72),
-        child: MiniPlayer(),
+      appBar: AppBar(
+        title: const Text('SONORA'),
+        backgroundColor: AppTheme.surfaceColor,
+        foregroundColor: AppTheme.textPrimary,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Обновить',
+            onPressed: _reload,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Настройки',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
+      body: _buildBody(),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_currentTrack != null) MiniPlayer(track: _currentTrack),
+          NavigationBar(
+            selectedIndex: _selectedNavIndex,
+            onDestinationSelected: (i) =>
+                setState(() => _selectedNavIndex = i),
+            destinations: const [
+              NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Главная'),
+              NavigationDestination(
+                  icon: Icon(Icons.search_outlined),
+                  selectedIcon: Icon(Icons.search),
+                  label: 'Поиск'),
+              NavigationDestination(
+                  icon: Icon(Icons.library_music_outlined),
+                  selectedIcon: Icon(Icons.library_music),
+                  label: 'Медиатека'),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  AppBar _buildAppBar(ThemeData theme, bool isDark) {
-    return AppBar(
-      title: const Text('SONORA'),
-      backgroundColor: isDark
-          ? AppTheme.primaryDark
-          : Colors.white,
-      elevation: 0,
-      foregroundColor: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () {
-            // Navigate to search
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.file_upload),
-          tooltip: 'Загрузить свой файл',
-          onPressed: () {
-            // Navigate to file picker - but we use a sheet instead
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Функция загрузки файлов в разработке')),
-            );
-          },
-        ),
-      ],
+  Widget _buildBody() {
+    if (_selectedNavIndex == 0) {
+      return _buildHomeContent();
+    } else if (_selectedNavIndex == 1) {
+      return _buildSearchPlaceholder();
+    } else {
+      return _buildLibraryPlaceholder();
+    }
+  }
+
+  Widget _buildHomeContent() {
+    return RefreshIndicator(
+      onRefresh: () async => _reload(),
+      child: CustomScrollView(
+        slivers: [
+          // Welcome header
+          SliverToBoxAdapter(
+            child: _buildWelcomeHeader(),
+          ),
+
+          // Recommendations
+          SliverToBoxAdapter(
+            child: _buildSectionTitle('Рекомендации для вас'),
+          ),
+          SliverToBoxAdapter(
+            child: _buildRecommendations(),
+          ),
+
+          // Trending
+          SliverToBoxAdapter(
+            child: _buildSectionTitle('Популярное сейчас'),
+          ),
+          _buildTrendingList(),
+
+          // Genres placeholder
+          SliverToBoxAdapter(
+            child: _buildSectionTitle('Жанры'),
+          ),
+          SliverToBoxAdapter(
+            child: _buildGenres(),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 100)), // Space for mini player
+        ],
+      ),
     );
   }
 
-  Widget _buildBody(
-      BuildContext context,
-      ThemeData theme,
-      bool isDark,
-      ) {
-    return SafeArea(
-      child: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverToBoxAdapter(
-            child: _buildHeader(theme, isDark),
+  Widget _buildWelcomeHeader() {
+    final hour = DateTime.now().hour;
+    String greeting;
+    if (hour < 6) greeting = 'Доброй ночи';
+    else if (hour < 12) greeting = 'Доброе утро';
+    else if (hour < 18) greeting = 'Добрый день';
+    else greeting = 'Добрый вечер';
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            greeting,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 28,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Что будем слушать сегодня?',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 16,
+            ),
           ),
         ],
-        body: TabBarView(
-          controller: _tabController,
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: AppTheme.textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecommendations() {
+    return FutureBuilder<List<Track>>(
+      future: _recommendationsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SizedBox(
+            height: 220,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: 5,
+              itemBuilder: (_, __) => const RecommendationCardSkeleton(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return _buildDiscoverFallback();
+        }
+
+        final tracks = snapshot.data!;
+        return SizedBox(
+          height: 220,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: tracks.length,
+            itemBuilder: (context, index) {
+              final track = tracks[index];
+              return _buildRecommendationCard(track);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildRecommendationCard(Track track) {
+    return Container(
+      width: 160,
+      margin: const EdgeInsets.only(right: 12),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            SharedAxisPageRoute(
+              child: PlayerScreen(initialTrack: track),
+              transitionType: SharedAxisTransitionType.vertical,
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTrendingSection(theme, isDark),
-            _buildSearchSection(theme, isDark),
-            _buildLibrarySection(theme, isDark),
-            _buildFileSection(theme, isDark), // New tab
+            Hero(
+              tag: 'album-art-${track.id}',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: track.coverUrl != null && track.coverUrl!.isNotEmpty
+                    ? Image.network(
+                        track.coverUrl!,
+                        width: 160,
+                        height: 160,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _cardPlaceholder(),
+                      )
+                    : _cardPlaceholder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              track.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            Text(
+              track.artist,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _getSourceLabel(track.sourceName),
+                style: TextStyle(
+                  color: AppTheme.primary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(ThemeData theme, bool isDark) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      color: isDark
-          ? AppTheme.surfaceColor
-          : Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Greeting
-          Text(
-            'Hello,',
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: isDark ? AppTheme.textSecondary : AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Welcome back!',
-            style: theme.textTheme.displayMedium?.copyWith(
-              color: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          // Quick access
-          const SizedBox(height: 24),
-          Text(
-            'Quick Access',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              color: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Favorite tracks preview
-          _buildQuickAccessGrid(theme, isDark),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickAccessGrid(ThemeData theme, bool isDark) {
+  Widget _buildDiscoverFallback() {
     return SizedBox(
-      height: 100,
-      child: ListView.builder(
-        shrinkWrap: true,
-        scrollDirection: Axis.horizontal,
-        itemCount: 4,
-        itemBuilder: (context, index) => _QuickAccessItem(
-          onTap: () {
-            // Handle quick access tap
-          },
-          isDark: isDark,
+      height: 200,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.explore, size: 48, color: AppTheme.textSecondary),
+            const SizedBox(height: 16),
+            const Text(
+              'Рекомендации появятся после прослушивания',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedNavIndex = 1),
+              icon: const Icon(Icons.search),
+              label: const Text('Найти музыку'),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildFileSection(ThemeData theme, bool isDark) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Section title
-          Text(
-            'Мои аудиофайлы',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              color: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
-              fontWeight: FontWeight.w600,
+  Widget _buildTrendingList() {
+    return FutureBuilder<List<Track>>(
+      future: _trendingFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, __) => const TrackTileSkeleton(),
+              childCount: 8,
             ),
-          ),
-          const SizedBox(height: 12),
+          );
+        }
 
-          // File picker widget
-          FilePickerWidget(),
+        if (snapshot.hasError) {
+          return SliverToBoxAdapter(child: _buildError(snapshot.error.toString()));
+        }
 
-          const SizedBox(height: 24),
+        final tracks = snapshot.data ?? [];
+        if (tracks.isEmpty) {
+          return const SliverToBoxAdapter(child: SizedBox(height: 200, child: Center(child: Text('Нет данных', style: TextStyle(color: AppTheme.textSecondary)))));
+        }
 
-          // Recently added from files
-          Text(
-            'Последние добавленные',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildRecentFilesGrid(theme, isDark),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentFilesGrid(ThemeData theme, bool isDark) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        crossAxisExtent: 120,
-        mainAxisExtent: 140,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: 4, // Placeholder count
-      itemBuilder: (context, index) => _RecentFileCard(
-        isDark: isDark,
-        onTap: () {
-          // Handle file tap - would pick and play
-        },
-      ),
-    );
-  }
-}
-
-class _QuickAccessItem extends StatelessWidget {
-  final VoidCallback onTap;
-  final bool isDark;
-
-  const _QuickAccessItem({
-    required this.onTap,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          width: 80,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isDark ? AppTheme.cardColor : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Icon(
-              Icons.favorite_border,
-              size: 32,
-              color: isDark ? AppTheme.accentColor : AppTheme.primaryDark,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentFileCard extends StatelessWidget {
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _RecentFileCard({
-    required this.isDark,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Card(
-      color: isDark ? AppTheme.cardColor : Colors.white,
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              // Placeholder for file icon
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isDark ? AppTheme.surfaceColor : Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.music_note,
-                  size: 20,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // File info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Аудиофайл ${index + 1}',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: isDark ? AppTheme.textPrimary : AppTheme.primaryDark,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final track = tracks[index];
+              return TrackTile(
+                track: track,
+                isCurrent: _currentTrack?.id == track.id,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    SharedAxisPageRoute(
+                      child: PlayerScreen(initialTrack: track),
+                      transitionType: SharedAxisTransitionType.vertical,
                     ),
-                    const SizedBox(height: 4),
+                  );
+                },
+              );
+            },
+            childCount: tracks.length > 10 ? 10 : tracks.length,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGenres() {
+    const genres = [
+      {'name': 'Поп', 'icon': Icons.music_note},
+      {'name': 'Рок', 'icon': Icons.electric_guitar},
+      {'name': 'Хип-хоп', 'icon': Icons.headphones},
+      {'name': 'Электроника', 'icon': Icons.speaker},
+      {'name': 'Инди', 'icon': Icons.library_music},
+      {'name': 'Джаз', 'icon': Icons.saxophone},
+    ];
+
+    return SizedBox(
+      height: 120,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: genres.length,
+        itemBuilder: (context, index) {
+          final genre = genres[index];
+          return Container(
+            width: 140,
+            margin: const EdgeInsets.only(right: 12),
+            child: InkWell(
+              onTap: () {},
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primary.withValues(alpha: 0.3),
+                      AppTheme.secondary.withValues(alpha: 0.3),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(genre['icon'] as IconData, size: 40, color: AppTheme.primary),
+                    const SizedBox(height: 8),
                     Text(
-                      '0:00',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? AppTheme.textSecondary : AppTheme.textPrimary,
+                      genre['name'] as String,
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              // Play button
-              IconButton(
-                icon: Icon(
-                  Icons.play_arrow,
-                  color: isDark ? AppTheme.accentColor : AppTheme.primaryDark,
-                  size: 20,
-                ),
-                onPressed: onTap,
-              ),
-            ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSearchPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.search, size: 64, color: AppTheme.textSecondary),
+          const SizedBox(height: 16),
+          const Text(
+            'Поиск — перейдите на вкладку Поиск',
+            style: TextStyle(color: AppTheme.textSecondary),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLibraryPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.library_music, size: 64, color: AppTheme.textSecondary),
+          const SizedBox(height: 16),
+          const Text(
+            'Медиатека — перейдите на вкладку Медиатека',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cloud_off, size: 56, color: AppTheme.textSecondary),
+            const SizedBox(height: 16),
+            const Text(
+              'Не удалось загрузить треки',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(message, style: const TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _reload,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Повторить'),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _cardPlaceholder() {
+    return Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(
+        child: Icon(Icons.music_note, size: 48, color: AppTheme.textSecondary),
+      ),
+    );
+  }
+
+  String _getSourceLabel(String sourceName) {
+    switch (sourceName.toLowerCase()) {
+      case 'audius':
+        return 'Audius';
+      case 'itunes':
+        return 'iTunes';
+      case 'internet archive':
+        return 'Archive';
+      case 'local':
+        return 'Локально';
+      default:
+        return sourceName;
+    }
   }
 }
